@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>qtquickcontrols2.conf</file>
+        <file>sine-curve.png</file>
+        <file>ChannelsCheckboxes.qml</file>
+        <file>SetSignalParams.qml</file>
+        <file>SettingsTable.qml</file>
+        <file>DebugPanel.qml</file>
+    </qresource>
+</RCC>
