@@ -27,12 +27,6 @@ int main(int argc, char *argv[])
     boost::asio::io_context io_context;
     boost::asio::posix::stream_descriptor stream_descr{io_context};
     Q_I2cDevice i2c_device;
-//    LogReceiver logReceiver;
-
-//    // Установка соединения
-//    QObject::connect(&i2c_device, SIGNAL(log(QVariantMap)),
-//            &logReceiver, SLOT(receiveLog(QVariantMap)),a
-//            Qt::QueuedConnection);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("i2c_device", &i2c_device);
@@ -48,7 +42,7 @@ int main(int argc, char *argv[])
     }, Qt::QueuedConnection);
     engine.load(url);
 
-    i2c_device.init(stream_descr);
+    i2c_device.init();
     std::thread io_thread([&io_context]() {
         io_context.run();
     });

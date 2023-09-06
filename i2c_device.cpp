@@ -1,26 +1,19 @@
 #include "i2c_device.h"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-
-#include <linux/i2c-dev.h>
-
 #include <boost/crc.hpp>
 #include <functional>
 #include <iostream>
 #include <string>
+#include <cstring>
 
 using namespace std;
 
 Q_I2cDevice::Q_I2cDevice(QObject *parent)
-        : QObject(parent)
-        , read_buffer_(1024) {
+    : QObject(parent)
+    , st_msg_{ .crc = 0, .data = 0 } {
 }
 
-void Q_I2cDevice::init(boost::asio::posix::stream_descriptor& stream_descr, int adapter_nr) {
-    stream_descr_ = &stream_descr;
+void Q_I2cDevice::init(int adapter_nr) {
     adapter_nr_ = adapter_nr;
 
     std::string filename = "/dev/i2c-" + std::to_string(adapter_nr_);
@@ -31,105 +24,65 @@ void Q_I2cDevice::init(boost::asio::posix::stream_descriptor& stream_descr, int 
     emit log(debug_map_);
 
     if (handle_ < 0) {
-      //std::cerr << "Error: " << strerror(errno) << std::endl;
       exit(1);
-    }
-
-    try {
-        stream_descr_->assign(handle_);
-    } catch (const boost::system::system_error& e) {
-        debug_map_["stream_descr_err"] = QString::fromStdString(e.what());
-        emit log(debug_map_);
     }
 }
 
 Q_I2cDevice::~Q_I2cDevice() {
-    stream_descr_->close();
     close(handle_);
 }
 
 QString Q_I2cDevice::send(int mcu, int data) {
     boost::crc_32_type crc32;
-    ++msg_cnt_;
 
-    tdSTMessage msg{ .crc = 0, .data = data };
     crc32.reset();
-    crc32.process_bytes(&msg.data, sizeof(msg.data));
-    msg.crc = crc32.checksum();
-    debug_map_["crc"] = msg.crc;
+    crc32.process_bytes(&st_msg_.data, sizeof(st_msg_.data));
+    st_msg_.crc = crc32.checksum();
+    st_msg_.data = data;
 
-    int ret = ioctl(handle_, I2C_SLAVE, dev_address[mcu]);
-    debug_map_["ioctl_return"] = ret;
-    debug_map_["ioctl_strerror"] = QString{ strerror(errno) };
-    debug_map_["msg_cnt"] = msg_cnt_;
-    emit log(debug_map_);
+    debug_map_["crc"] = st_msg_.crc;
 
-    if (ret < 0) {
-      exit(1);
+    /* Запись в slave */
+    uint8_t write_buffer[MSG_SIZE];
+    for(int i = 0; i < sizeof(st_msg_); ++i) {
+        std::memcpy(write_buffer + i, &st_msg_, MSG_SIZE);
     }
 
-    int buf[10];
-    buf[0] = msg.crc;
-    buf[1] = msg.data;
-//    ret = write(handle_, buf, sizeof(msg));
-//    debug_map_["write_return"] = ret;
-//    debug_map_["write_strerror"] = QString{ strerror(errno) };
-//    emit log(debug_map_);
-//    if (ret != 1) {
-//      /* ERROR HANDLING: i2c transaction failed */
-//    }
+    messages_[0].addr  = dev_address[mcu];
+    messages_[0].flags = 0; // флаги записи
+    messages_[0].len   = MSG_SIZE;
+    messages_[0].buf   = write_buffer;
 
-//    boost::asio::async_write( *stream_descr_, boost::asio::buffer(buf, sizeof(msg)),
-//        std::bind(&Q_I2cDevice::onWrite, this, std::placeholders::_1, std::placeholders::_2) );
+    /* Чтение из slave */
+    uint8_t read_buffer[MSG_SIZE];
+    messages_[1].addr  = dev_address[mcu];
+    messages_[1].flags = I2C_M_RD; // флаги чтения
+    messages_[1].len   = MSG_SIZE;
+    messages_[1].buf   = read_buffer;
 
-    boost::asio::async_write( *stream_descr_, boost::asio::buffer(buf, sizeof(msg)),
-                  [this](const boost::system::error_code& error, size_t bytes_transferred) {
-                      if (error) {
-                          debug_map_["on_write_status"] = "Failed";
-                          debug_map_["on_write_error"] = QString::fromStdString(error.message());
-                      } else {
-                          debug_map_["on_write_status"] = "Success";
-                          debug_map_["on_bytes_transferred"] = static_cast<int>(bytes_transferred);
-                      }
-                      emit log(debug_map_);
-                      read();
-                  } );
+    /* Пакет для отправки */
+    packets_.msgs      = messages_;
+    packets_.nmsgs     = 2; // отправляем два сообщения
+
+    int ret = ioctl(handle_, I2C_RDWR, &packets_);
+    ++msg_cnt_;
+
+    debug_map_["ioctl_return"] = ret;
+    debug_map_["ioctl_strerror"] = QString{ strerror(errno) };
+    QString hexString;
+    for (int i = MSG_SIZE-1; i >= 0; --i) {
+        hexString.append(QString::number(read_buffer[i], 16).rightJustified(2, '0'));
+        hexString.append(" ");
+    }
+    debug_map_["read_buffer_"] = hexString.trimmed();
+    debug_map_["msg_cnt"] = msg_cnt_;
+    emit log(debug_map_);
 
     return {};
 }
 
-void Q_I2cDevice::onWrite(const boost::system::error_code& error, size_t bytes_transferred) {
-    if (error) {
-        debug_map_["on_write_status"] = "Failed";
-        debug_map_["on_write_error"] = QString::fromStdString(error.message());
-    } else {
-        debug_map_["on_write_status"] = "Success";
-        debug_map_["on_bytes_transferred"] = static_cast<int>(bytes_transferred);
-    }
-    emit log(debug_map_);
-
-    if (error) {
-        // Handle the error...
-        //callback_(QString::fromStdString(error.message()));
-    } else {
-        // Successfully wrote the data...
-        //callback_(QString());
-//        emit commandSent(QString()); // Emit signal to inform of the result
-    }
-}
-
-void Q_I2cDevice::read() {
-    boost::asio::async_read(*stream_descr_, boost::asio::buffer(read_buffer_),
-          std::bind(&Q_I2cDevice::onRead, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void Q_I2cDevice::onRead(const boost::system::error_code& error, size_t bytes_transferred) {
-    if (error) {
-        debug_map_["on_read_status"] = "Failed";
-        debug_map_["on_read_error"] = QString::fromStdString(error.message());
-    } else {
-        debug_map_["on_read_status"] = "Success";
-        debug_map_["on_bytes_transferred"] = static_cast<int>(bytes_transferred);
-    }
-    emit log(debug_map_);
-}
+//void Q_I2cDevice::Serialize() {
+//    for(int i = 0; i < sizeof(st_msg_); ++i) {
+//        std::memcpy(write_buffer_ + i, &st_msg_, sizeof(st_msg_));
+//    }
+//}

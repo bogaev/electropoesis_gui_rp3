@@ -10,18 +10,14 @@ Item {
     function createDebugString(debug_map) {
         return "I2C handle: " + debug_map["handle"] + "\n" +
                 "init_strerror: " + debug_map["init_strerror"] + "\n" +
-                "stream_descr_err: " + debug_map["stream_descr_err"] + "\n" +
+
                 "crc: " + debug_map["crc"] + "\n" +
+
                 "ioctl_return: " + debug_map["ioctl_return"] + "\n" +
                 "ioctl_strerror: " + debug_map["ioctl_strerror"] + "\n" +
-                "write_return: " + debug_map["write_return"] + "\n" +
-                "write_strerror: " + debug_map["write_strerror"] + "\n" +
-                "on_write_status: " + debug_map["on_write_status"] + "\n" +
-                "on_write_error: " + debug_map["on_write_error"] + "\n" +
-                "on_bytes_transferred: " + debug_map["on_bytes_transferred"] + "\n" +
-                "on_read_status: " + debug_map["on_write_error"] + "\n" +
-                "on_read_error: " + debug_map["on_bytes_transferred"] + "\n" +
-                "on_bytes_transferred: " + debug_map["on_bytes_transferred"] + "\n" +
+
+                "read_buffer_: " + debug_map["read_buffer_"] + "\n" +
+
                 "msg_cnt: " + debug_map["msg_cnt"];
     }
 
