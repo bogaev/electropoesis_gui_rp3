@@ -9,8 +9,6 @@ import QtQuick.Extras 1.4
 import QtQuick.VirtualKeyboard 2.1
 import QtQml 2.12
 
-import PwmSettings 0.1
-
 ApplicationWindow {
     id: window
     width: 1920
@@ -22,6 +20,108 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Material.Teal
 
+    readonly property int comStatus_OK: 0
+    readonly property int comStatus_CRC_ERR: 1
+    readonly property int comStatus_OS_ERR: 2
+    readonly property int comStatus_ERR: 3
+
+    readonly property int mcuStatus_RESTARTED: 0
+    readonly property int mcuStatus_RELAY_ON: 1
+    readonly property int mcuStatus_RESUME: 2
+    readonly property int mcuStatus_PAUSE: 3
+    readonly property int mcuStatus_ERR: 4
+
+    property int mcuMain: 0xAA
+    property int mcuAdd: 0x55
+
+    property int mcuMainStatus: 0
+    property int mcuAddStatus: 0
+
+    property bool isRunning: false
+
+    function applySignalParams() {
+        sspCarrier.setSignalParams(sspCarrier.signalId)
+        sspCarrier.fillSettingsTable()
+        sspAmpMod.setSignalParams(sspAmpMod.signalId)
+        sspAmpMod.fillSettingsTable()
+        sspFreqMod.setSignalParams(sspFreqMod.signalId)
+        sspFreqMod.fillSettingsTable()
+        pwm_settings.commitChanges()
+    }
+
+    Connections {
+        target: pwm_settings
+        onCheckboxChanged: {
+            ccb.checkBoxes[index].checkState = status
+        }
+        onSingleCheckboxChanged: {
+            sspCarrier.updateSignalsParams(index)
+            sspAmpMod.updateSignalsParams(index)
+            sspFreqMod.updateSignalsParams(index)
+        }
+        onUartStatusChanged: {
+            debugTextArea.text = newStatus
+        }
+        onIsNonCosCarrier: function(value) {
+            if (value === true) {
+                sspAmpMod.visible = false
+                sspFreqMod.visible = false
+            } else {
+                sspAmpMod.visible = true
+                sspFreqMod.visible = true
+            }
+        }
+        onSignalParamChanged: function(ch, chbx, sig, type, amp, freq) {
+            console.log("Signal received:", ch, chbx, sig, type, amp, freq);
+            ccb.checkBoxes[ch].checkState = chbx ? Qt.Checked : Qt.Unchecked
+            if (sig === 0) {
+                sspCarrier.setParams(ch, type, amp, freq)
+                sspCarrier.updateSignalsParams(ch)
+            } else if (sig === 1) {
+                sspAmpMod.setParams(ch, type, amp, freq)
+                sspAmpMod.updateSignalsParams(ch)
+            } else if (sig === 2) {
+                sspFreqMod.setParams(ch, type, amp, freq)
+                sspFreqMod.updateSignalsParams(ch)
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        sspCarrier.setSignalName("Несущая")
+        sspAmpMod.setSignalName("Ампл. мод.")
+        sspFreqMod.setSignalName("Част. мод.")
+        pwm_settings.initAllChannels()
+        applySignalParams()
+    }
+
+    Timer {
+        id: pwmTimer
+        interval: 1000
+        running: true   // Автоматический запуск таймера
+        repeat: true    // Повторять бесконечно
+
+        onTriggered: {
+            mcuMainStatus = pwm_settings.getStatus(mcuMain)
+            mcuAddStatus = pwm_settings.getStatus(mcuAdd)
+            isRunning = mcuMainStatus == mcuStatus_RESUME
+                     && mcuAddStatus == mcuStatus_RESUME
+            if (    mcuMainStatus == mcuStatus_RESTARTED
+                 || mcuAddStatus == mcuStatus_RESTARTED) {
+                pwm_settings.relayOn()
+                pwm_settings.initAllChannels()
+                applySignalParams()
+            }
+//            if (    sspCarrier.isParamsChanged()
+//                 || sspAmpMod.isParamsChanged()
+//                 || sspFreqMod.isParamsChanged()
+////                 || ccb.isParamsChanged()
+//                    ) {
+//                applySignalParams()
+//            }
+        }
+    }
+
     GroupBox {
         id: debugBox
         title: "Debug Panel"
@@ -30,6 +130,7 @@ ApplicationWindow {
         width: 400
         height: 400
         z: 2
+        visible: false
 
         DebugPanel {
             id: debugPanel
@@ -44,44 +145,19 @@ ApplicationWindow {
         width: 193
         height: 40
         color: "#ffffff"
-        text: qsTr("v 0.010")
+        text: qsTr("v 0.011")
         font.pixelSize: 10
-    }
 
-    PwmSettings {
-        id: pwm_settings
-        onCheckboxChanged: {
-            ccb.checkBoxes[index].checkState = status
-        }
-        onSingleCheckboxChanged: {
-            sspCarrier.updateSignalsParams(index)
-            sspAmpMod.updateSignalsParams(index)
-            sspFreqMod.updateSignalsParams(index)
-        }
-        onUartStatusChanged: {
-            debugTextArea.text = newStatus
-        }
-        onIsNonCosCarrier: {
-            if (value == true) {
-                sspAmpMod.visible = false
-                sspFreqMod.visible = false
-            } else {
-                sspAmpMod.visible = true
-                sspFreqMod.visible = true
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                debugBox.visible = !debugBox.visible // изменение свойства visible на противоположное значение
             }
         }
     }
 
     Connections {
-        id: i2c
         target: i2c_device
-    }
-
-    Component.onCompleted: {
-        sspCarrier.setSignalName("Несущая")
-        sspAmpMod.setSignalName("Ампл. мод.")
-        sspFreqMod.setSignalName("Част. мод.")
-        sspCarrier.setSignalType(1)
     }
 
     ListModel {
@@ -146,22 +222,77 @@ ApplicationWindow {
     }
 
     Button {
-        id: buttonSignalSet
+        id: buttonSet
         x: 1507
-        y: 703
+        y: 803
         width: 332
         height: 91
         text: qsTr("Установить")
         font.pointSize: 24
+        anchors.right: buttonStart.right
+        anchors.bottom: buttonStart.top
+        anchors.bottomMargin: 40
+
         onClicked: {
-            i2c_device.send(1, 0xDEADBEEF);
-//            sspCarrier.setSignalParams(sspCarrier.signalId)
-//            sspCarrier.fillSettingsTable()
-//            sspAmpMod.setSignalParams(sspAmpMod.signalId)
-//            sspAmpMod.fillSettingsTable()
-//            sspFreqMod.setSignalParams(sspFreqMod.signalId)
-//            sspFreqMod.fillSettingsTable()
-//            pwm_settings.commitChanges()
+            applySignalParams()
+        }
+    }
+
+    Button {
+        id: buttonStart
+        x: 1507
+        y: 803
+        width: 332
+        height: 91
+        text: qsTr("Старт / Стоп")
+        font.pointSize: 24
+        anchors.right: parent.right
+        anchors.rightMargin: 40
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 100
+
+        onClicked: {
+            if (isRunning) {
+                pwm_settings.stop()
+            } else {
+                pwm_settings.start()
+            }
+        }
+    }
+
+    Rectangle {
+        id: animatedIndicatorStart
+        x: 1480
+        y: 803
+        width: 20
+        height: 20
+        radius: width / 2
+        anchors.left: buttonStart.left
+        anchors.leftMargin: 10
+        anchors.top: buttonStart.top
+        anchors.topMargin: 15
+
+        property bool isGreen: false
+
+        color: {
+            if (!isRunning) {
+                return "red";
+            } else {
+                if (isGreen) {
+                    return "green";
+                } else {
+                    return "black";
+                }
+            }
+        }
+
+        Timer {
+            interval: 1000
+            running: isRunning
+            repeat: true
+            onTriggered: {
+                animatedIndicatorStart.isGreen = !animatedIndicatorStart.isGreen;
+            }
         }
     }
 
@@ -171,19 +302,6 @@ ApplicationWindow {
         y: active ? parent.height - height+50 : parent.height
         anchors.left: parent.left
         anchors.right: parent.right
-    }
-
-    Button {
-        id: button
-        x: 1507
-        y: 918
-        width: 332
-        height: 91
-        text: qsTr("Выход")
-        font.pointSize: 24
-        onClicked: {
-            Qt.callLater(Qt.quit)
-        }
     }
 }
 

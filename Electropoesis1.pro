@@ -1,8 +1,5 @@
-#QT += quickcontrols2 qml
-
 CONFIG += disable-desktop c++11 qmltypes static
 
-#QML_IMPORT_NAME = io.qt.examples.backend SimpleRng
 QML_IMPORT_NAME = SimpleRng
 QML_IMPORT_MAJOR_VERSION = 1
 
@@ -14,7 +11,8 @@ SOURCES += \
         i2c_device.cpp \
         main.cpp \
         pwm_channels_settings.cpp \
-        tablemodel.cpp
+        tablemodel.cpp \
+        usb_monitor.cpp
 
 RESOURCES += qml.qrc
 
@@ -35,14 +33,12 @@ HEADERS += \
     enum_types.h \
     i2c_device.h \
     pwm_channels_settings.h \
-    tablemodel.h
+    tablemodel.h \
+    usb_monitor.h
 
 INCLUDEPATH += src/cpp /home/sergey/libs/
 
 static {
     QTPLUGIN += qtvirtualkeyboardplugin
-    QT += quickcontrols2 qml
-    QT += svg
-    QT += serialport
-    QT += widgets
+    QT += core gui quickcontrols2 qml svg serialport widgets
 }

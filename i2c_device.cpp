@@ -8,9 +8,10 @@
 
 using namespace std;
 
+constexpr uint8_t Q_I2cDevice::CH_TO_I2C_ADDR[CHANNELS_NUM];
+
 Q_I2cDevice::Q_I2cDevice(QObject *parent)
-    : QObject(parent)
-    , st_msg_{ .crc = 0, .data = 0 } {
+    : QObject(parent) {
 }
 
 void Q_I2cDevice::init(int adapter_nr) {
@@ -32,57 +33,77 @@ Q_I2cDevice::~Q_I2cDevice() {
     close(handle_);
 }
 
-QString Q_I2cDevice::send(int mcu, int data) {
-    boost::crc_32_type crc32;
-
-    crc32.reset();
-    crc32.process_bytes(&st_msg_.data, sizeof(st_msg_.data));
-    st_msg_.crc = crc32.checksum();
+McuAnswer Q_I2cDevice::send(quint32 ch, tdPwmData data) {
     st_msg_.data = data;
 
+    boost::crc_32_type crc32;
+    crc32.reset();
+    crc32.process_bytes(&st_msg_.data, DATA_SIZE);
+    st_msg_.crc = crc32.checksum();
     debug_map_["crc"] = st_msg_.crc;
 
     /* Запись в slave */
     uint8_t write_buffer[MSG_SIZE];
-    for(int i = 0; i < sizeof(st_msg_); ++i) {
-        std::memcpy(write_buffer + i, &st_msg_, MSG_SIZE);
-    }
+    std::memcpy(write_buffer, &st_msg_, MSG_SIZE);
 
-    messages_[0].addr  = dev_address[mcu];
+    messages_[0].addr  = CH_TO_I2C_ADDR[ch];
     messages_[0].flags = 0; // флаги записи
     messages_[0].len   = MSG_SIZE;
     messages_[0].buf   = write_buffer;
 
     /* Чтение из slave */
-    uint8_t read_buffer[MSG_SIZE];
-    messages_[1].addr  = dev_address[mcu];
+    uint8_t read_buffer[ANSWER_SIZE];
+    messages_[1].addr  = CH_TO_I2C_ADDR[ch];
     messages_[1].flags = I2C_M_RD; // флаги чтения
-    messages_[1].len   = MSG_SIZE;
+    messages_[1].len   = ANSWER_SIZE;
     messages_[1].buf   = read_buffer;
 
     /* Пакет для отправки */
     packets_.msgs      = messages_;
-    packets_.nmsgs     = 2; // отправляем два сообщения
+    packets_.nmsgs     = 2;
 
-    int ret = ioctl(handle_, I2C_RDWR, &packets_);
-    ++msg_cnt_;
+    int ret = -1;
+    int repeat = 0;
+    int com_status = -1;
+    int mcu_status = -1;
+
+    do {
+        ret = ioctl(handle_, I2C_RDWR, &packets_);
+        ++repeat;
+        ++msg_cnt_;
+        com_status = read_buffer[0];
+        mcu_status = read_buffer[1];
+        if (ret < 0 || com_status != COM_STATUS_OK) {
+            ++err_cnt_;
+        }
+    } while ((ret < 0 || com_status != COM_STATUS_OK) && repeat < MAX_REPEATS);
 
     debug_map_["ioctl_return"] = ret;
     debug_map_["ioctl_strerror"] = QString{ strerror(errno) };
-    QString hexString;
-    for (int i = MSG_SIZE-1; i >= 0; --i) {
-        hexString.append(QString::number(read_buffer[i], 16).rightJustified(2, '0'));
-        hexString.append(" ");
-    }
-    debug_map_["read_buffer_"] = hexString.trimmed();
+    debug_map_["Com status"] = com_status;
+    debug_map_["MCU status"] = mcu_status;
     debug_map_["msg_cnt"] = msg_cnt_;
+    debug_map_["err_cnt"] = err_cnt_;
+
     emit log(debug_map_);
 
-    return {};
+    return McuAnswer {com_status, mcu_status};
 }
 
-//void Q_I2cDevice::Serialize() {
-//    for(int i = 0; i < sizeof(st_msg_); ++i) {
-//        std::memcpy(write_buffer_ + i, &st_msg_, sizeof(st_msg_));
-//    }
-//}
+McuAnswer Q_I2cDevice::send(uint8_t addr, tdMessageType msg_type) {
+    McuAnswer answer;
+
+    if (addr == MAIN_ADDR) {
+        answer = send(0, tdPwmData { msg_type, 0, 0, 0, 0 });
+        debug_map_["Main MCU com answer"] = int(answer.com_status);
+        debug_map_["Main MCU answer"] = int(answer.mcu_status);
+        emit log(debug_map_);
+    } else if (addr == ADD_ADDR) {
+        answer = send(2, tdPwmData { msg_type, 0, 0, 0, 0 });
+        debug_map_["Add MCU com answer"] = int(answer.com_status);
+        debug_map_["Add MCU answer"] = int(answer.mcu_status);
+        emit log(debug_map_);
+    }
+
+    return answer;
+}

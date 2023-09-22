@@ -9,7 +9,22 @@ import QtQuick.Extras 1.4
 import QtQml 2.12
 
 Item {
+    Connections {
+        target: pwm_settings
+        onSignalParamChanged: function(ch, chbx, sig, type, amp, freq) {
+            checkBoxes[ch].checked = chbx;
+        }
+    }
+
     property bool allButtonState : false
+    property bool paramChanged: false
+
+    function isParamsChanged() {
+        var ret = paramChanged
+        paramChanged = false
+        return ret;
+    }
+
     function toggleAllButtonState() {
         if(allButtonState) allButtonState = false;
         else allButtonState = true;
@@ -43,10 +58,12 @@ Item {
         font.pointSize: 24
         onClicked: {
             toggleAllButtonState()
-            if(allButtonState == true)
+            if(allButtonState == true) {
                 pwm_settings.setAllChannels(Qt.Checked)
-            else
+            } else {
                 pwm_settings.setAllChannels(Qt.Unchecked)
+            }
+            paramChanged = true
         }
     }
 
@@ -63,9 +80,9 @@ Item {
             y: 196
             text: qsTr("Канал 1")
             font.pointSize: 24
-            checked: true
             onClicked: {
                 pwm_settings.setCheckboxStatus(0, checkState)
+                paramChanged = true
             }
         }
 
@@ -78,6 +95,7 @@ Item {
             font.pointSize: 24
             onClicked: {
                 pwm_settings.setCheckboxStatus(1, checkState)
+                paramChanged = true
             }
         }
 
@@ -89,6 +107,7 @@ Item {
             font.pointSize: 24
             onClicked: {
                 pwm_settings.setCheckboxStatus(2, checkState)
+                paramChanged = true
             }
         }
 
@@ -100,6 +119,7 @@ Item {
             font.pointSize: 24
             onClicked: {
                 pwm_settings.setCheckboxStatus(3, checkState)
+                paramChanged = true
             }
         }
     }
@@ -118,6 +138,7 @@ Item {
             font.pointSize: 24
             onClicked: {
                 pwm_settings.setCheckboxStatus(4, checkState)
+                paramChanged = true
             }
         }
 
@@ -129,6 +150,7 @@ Item {
             font.pointSize: 24
             onClicked: {
                 pwm_settings.setCheckboxStatus(5, checkState)
+                paramChanged = true
             }
         }
 
@@ -140,6 +162,7 @@ Item {
             font.pointSize: 24
             onClicked: {
                 pwm_settings.setCheckboxStatus(6, checkState)
+                paramChanged = true
             }
         }
 

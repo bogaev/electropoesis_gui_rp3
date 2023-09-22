@@ -12,29 +12,38 @@ Item {
     width: 1980
     height: 1080
 
+    property int channelsMax: 8
     property int signalId: 0
     property ListModel signalsList: carrierSignalType
     property bool paramChanged: false
     property bool signalTypeChanged: false
 
-    property variant arSignal: [0, 0, 0, 0, 0, 0, 0, 0]
-    property variant arAmp: [0, 0, 0, 0, 0, 0, 0, 0]
-    property variant arFreq: [0, 0, 0, 0, 0, 0, 0, 0]
+    property variant arSignal:  [0, 0, 0, 0, 0, 0, 0, 0]
+    property variant arAmp:     [0, 0, 0, 0, 0, 0, 0, 0]
+    property variant arFreq:    [0, 0, 0, 0, 0, 0, 0, 0]
 
-    function is_params_changed() {
-        var ret = (get_signal_type(comboBoxSignalType.currentText) !== 4) && paramChanged
-        ret = ret || signalTypeChanged
+    function isParamsChanged() {
+        var ret = paramChanged
         paramChanged = false
-        signalTypeChanged = false
         return ret;
+    }
+
+    function getAmpValue() {
+        var ampValue = parseInt(comboBoxAmplitude.editText.trim());
+        return ampValue;
+    }
+
+    function getFreqValue() {
+        var freqValue = parseInt(comboBoxFreq.editText.trim());
+        return freqValue;
     }
 
     function setSignalParams(signal) {
         pwm_settings.setSignalParams(
                     signal,
                     comboBoxSignalType.currentIndex,
-                    comboBoxAmplitude.currentIndex+1,
-                    comboBoxFreq.currentIndex+1)
+                    getAmpValue(),
+                    getFreqValue())
     }
 
     function setSignalName(name) {
@@ -46,24 +55,30 @@ Item {
     }
 
     function saveIndexes() {
-        for(var i = 0; i < 8; ++i) {
+        for(var i = 0; i < channelsMax; ++i) {
             if(ccb.checkBoxes[i].checkState === Qt.Checked) {
                 arSignal[i] = comboBoxSignalType.currentIndex
-                arAmp[i] = comboBoxAmplitude.currentIndex
-                arFreq[i] = comboBoxFreq.currentIndex
+                arAmp[i] = getAmpValue()
+                arFreq[i] = getFreqValue()
             }
         }
     }
 
+    function setParams(ch, type, amp, freq) {
+        arSignal[ch] = type
+        arAmp[ch] = amp
+        arFreq[ch] = freq
+    }
+
     function concatenateParamsString() {
         var type = ["-", "Син", "Меандр", "Треуг", "Пила"]
-        if(comboBoxSignalType.currentIndex == 0) return "-"
-        return type[comboBoxSignalType.currentIndex] + ", " + comboBoxAmplitude.currentText + "В, " + comboBoxFreq.currentText + "Гц"
+        if (comboBoxSignalType.currentIndex == 0) return "-"
+        return type[comboBoxSignalType.currentIndex] + ", " + getAmpValue() + "В, " + getFreqValue() + "Гц"
     }
 
     function fillSettingsTable() {
         saveIndexes()
-        for(var i = 0; i < 8; ++i) {
+        for(var i = 0; i < channelsMax; ++i) {
             if(ccb.checkBoxes[i].checkState === Qt.Checked)
                 settingsTable.model.setCellText(i, signalId, concatenateParamsString())
         }
@@ -71,15 +86,14 @@ Item {
 
     function updateSignalsParams(index) {
         comboBoxSignalType.currentIndex = arSignal[index]
-        comboBoxAmplitude.currentIndex = arAmp[index]
-        comboBoxFreq.currentIndex = arFreq[index]
+        comboBoxAmplitude.editText = arAmp[index]
+        comboBoxFreq.editText = arFreq[index]
     }
 
     ListModel {
         id: listAmplitudes
         ListElement { text: "1" }
         ListElement { text: "2" }
-        ListElement { text: "3" }
     }
 
     ListModel {
@@ -137,6 +151,7 @@ Item {
         font.pointSize: 24
         model: signalsList
         onCurrentIndexChanged: {
+            paramChanged = true
         }
     }
 
@@ -151,9 +166,10 @@ Item {
         display: AbstractButton.TextOnly
         onClicked: {
             comboBoxSignalType.incrementCurrentIndex()
-            setSignalParams(signalId)
-            fillSettingsTable()
-            pwm_settings.commitChanges()
+            paramChanged = true
+//            setSignalParams(signalId)
+//            fillSettingsTable()
+//            pwm_settings.commitChanges()
         }
     }
 
@@ -168,9 +184,7 @@ Item {
         font.pointSize: 24
         onClicked: {
             comboBoxSignalType.decrementCurrentIndex()
-            setSignalParams(signalId)
-            fillSettingsTable()
-            pwm_settings.commitChanges()
+            paramChanged = true
         }
     }
 
@@ -180,7 +194,7 @@ Item {
         y: 48
         width: 248
         height: 37
-        text: qsTr("Размах сигнала, В")
+        text: qsTr("Ампл. коэфф")
         font.pointSize: 24
         fontSizeMode: Text.Fit
     }
@@ -192,8 +206,10 @@ Item {
         width: 248
         height: 67
         font.pointSize: 24
+        editable: true
         model: listAmplitudes
         onCurrentIndexChanged: {
+            paramChanged = true
         }
     }
 
@@ -208,9 +224,7 @@ Item {
         font.pointSize: 24
         onClicked: {
             comboBoxAmplitude.incrementCurrentIndex()
-            setSignalParams(signalId)
-            fillSettingsTable()
-            pwm_settings.commitChanges()
+            paramChanged = true
         }
     }
 
@@ -225,9 +239,7 @@ Item {
         font.pointSize: 24
         onClicked: {
             comboBoxAmplitude.decrementCurrentIndex()
-            setSignalParams(signalId)
-            fillSettingsTable()
-            pwm_settings.commitChanges()
+            paramChanged = true
         }
     }
 
@@ -253,6 +265,7 @@ Item {
         inputMethodHints: Qt.ImhDigitsOnly
         model: listFreq
         onCurrentIndexChanged: {
+            paramChanged = true
         }
     }
 
@@ -267,9 +280,7 @@ Item {
         font.pointSize: 24
         onClicked: {
             comboBoxFreq.incrementCurrentIndex()
-            setSignalParams(signalId)
-            fillSettingsTable()
-            pwm_settings.commitChanges()
+            paramChanged = true
         }
     }
 
@@ -284,9 +295,7 @@ Item {
         font.pointSize: 24
         onClicked: {
             comboBoxFreq.decrementCurrentIndex()
-            setSignalParams(signalId)
-            fillSettingsTable()
-            pwm_settings.commitChanges()
+            paramChanged = true
         }
     }
 }
