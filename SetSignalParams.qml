@@ -93,7 +93,6 @@ Item {
     ListModel {
         id: listAmplitudes
         ListElement { text: "1" }
-        ListElement { text: "2" }
     }
 
     ListModel {
@@ -206,7 +205,7 @@ Item {
         width: 248
         height: 67
         font.pointSize: 24
-        editable: true
+//        editable: true
         model: listAmplitudes
         onCurrentIndexChanged: {
             paramChanged = true

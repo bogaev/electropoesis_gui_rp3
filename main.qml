@@ -20,6 +20,8 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Material.Teal
 
+    property bool isStarted: false
+
     readonly property int comStatus_OK: 0
     readonly property int comStatus_CRC_ERR: 1
     readonly property int comStatus_OS_ERR: 2
@@ -111,6 +113,9 @@ ApplicationWindow {
                 pwm_settings.relayOn()
                 pwm_settings.initAllChannels()
                 applySignalParams()
+                if (isStarted) {
+                    pwm_settings.start()
+                }
             }
 //            if (    sspCarrier.isParamsChanged()
 //                 || sspAmpMod.isParamsChanged()
@@ -254,8 +259,10 @@ ApplicationWindow {
         onClicked: {
             if (isRunning) {
                 pwm_settings.stop()
+                isStarted = false
             } else {
                 pwm_settings.start()
+                isStarted = true
             }
         }
     }
